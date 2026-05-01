@@ -1,5 +1,6 @@
 # OSCAR Flasher Server
 
+![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg?logo=apache&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)
 ![Toolchain](https://img.shields.io/badge/toolchain-Visual%20Studio%202026-purple.svg)
 ![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)
@@ -66,7 +67,7 @@ git clone https://github.com/DADDesign-Projects/OSCAR_Flasher_Server
 ---
 
 ## ▶️ Usage
-
+![Screenshot](Ressources/OSCAR_Flasher_Server.png)
 1. Connect the OSCAR pedal via USB  
 2. Select the corresponding COM port  
 3. Launch `OSCAR_FlasherServer.exe`  
