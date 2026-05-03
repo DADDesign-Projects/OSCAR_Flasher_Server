@@ -24,7 +24,7 @@ namespace Dad {
 cServer::cServer()
 {
     m_hCom = INVALID_HANDLE_VALUE;
-    memcpy_s(m_Bloc.StartMarker, sizeof(m_Bloc.StartMarker), "BLOC", 4);
+    memcpy_s(m_Bloc.StartMarker, sizeof(m_Bloc.StartMarker), "BLOK", 4);
     memcpy_s(m_Bloc.EndMarker,   sizeof(m_Bloc.EndMarker),   "END",  3);
 }
 
@@ -153,7 +153,7 @@ int16_t cServer::Synchronize()
             step = (byte == 'O') ? eStep::Marker_C : eStep::Marker_B;
             break;
         case eStep::Marker_C:
-            step = (byte == 'C') ? eStep::NumBloc_Low : eStep::Marker_B;
+            step = (byte == 'K') ? eStep::NumBloc_Low : eStep::Marker_B;
             break;
         case eStep::NumBloc_Low:
             numBloc = static_cast<int16_t>(byte);
