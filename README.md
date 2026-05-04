@@ -82,7 +82,12 @@ git clone https://github.com/DADDesign-Projects/OSCAR_Flasher_Server
 > During flashing, the entire flash memory is erased before programming.
 
 ---
+## 🙏 Credits
 
+Special thanks to the following project:
+
+- [ELFIO](https://github.com/serge1/elfio) – used for ELF parsing
+  
 ## 👤 Author
 
 Developed by:  
