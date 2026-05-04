@@ -28,6 +28,7 @@ protected:
 
 	// Fonctions générées de la table des messages
 	virtual BOOL OnInitDialog();
+	void UpdateHorizontalExtent();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
@@ -45,4 +46,6 @@ public:
 	CListBox m_ListeCom;
 	CProgressCtrl m_Progress;
 	CButton m_ButtonFlash;
+	afx_msg void OnBnClickedSaveFiles();
+	afx_msg void OnBnClickedFlashFile();
 };

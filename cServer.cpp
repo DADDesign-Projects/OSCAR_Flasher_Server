@@ -221,6 +221,10 @@ bool cServer::isElfFile(const std::string& fileName)
     return hasExtension(fileName, { ".elf" });
 }
 
+bool cServer::isOFSFFile(const std::string& fileName)
+{
+    return hasExtension(fileName, { ".ofsf" });
+}
 //==================================================================================
 // Low-level buffer helpers
 //==================================================================================
@@ -278,6 +282,7 @@ bool cServer::addFile(const std::string& filePath, const std::string& fileName)
 {
     if (isImageFile(fileName)) return addImageFile(filePath, fileName);
     if (isElfFile(fileName))   return addElfFile  (filePath, fileName);
+	if (isOFSFFile(fileName)) return addOFSFFile(filePath, fileName);
     return addCommonFile(filePath, fileName);
 }
 
@@ -514,6 +519,50 @@ bool cServer::addElfFile(const std::string& filePath, const std::string& fileNam
     return true;
 }
 
+//==================================================================================
+// OFSF file loader
+//==================================================================================
+bool cServer::addOFSFFile(const std::string& filePath, const std::string& fileName) {
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) return false;
+
+    stFile FileDirectory[DIR_FILE_COUNT];
+    uint32_t Offset = static_cast<uint32_t>(m_pFirstFreeBuff - m_pBuff);
+    Offset -=sizeof(FileDirectory);
+
+    auto fileSize = static_cast<uint32_t>(file.tellg());
+    fileSize -= sizeof(FileDirectory);
+    file.seekg(0, std::ios::beg);
+
+    // lecture du repertoire
+
+    if (!file.read(reinterpret_cast<char*>(FileDirectory), sizeof(FileDirectory))) return false;
+	
+    // Copie les entrees du repertoire dans le buffer
+    uint16_t IndexFile = 0;
+    while (FileDirectory[IndexFile].Size != 0) {
+        strncpy_s(m_pFile->Name, FileDirectory[IndexFile].Name, MAX_ENTRY_NAME);
+        m_pFile->Size = FileDirectory[IndexFile].Size;
+        m_pFile->DataAddress = FileDirectory[IndexFile].DataAddress + Offset;
+        m_pFile->FileType = FileDirectory[IndexFile].FileType;
+        ++m_pFile;
+        ++m_IndexFile;
+
+        IndexFile++;
+        if (IndexFile >= DIR_FILE_COUNT) return false;
+	}
+
+    if ((m_pFirstFreeBuff + fileSize) > m_pEndBuff) return false;
+    if (!file.read(reinterpret_cast<char*>(m_pFirstFreeBuff), fileSize)) return false;
+
+    m_pFirstFreeBuff += fileSize;
+
+    // 4-byte alignment
+    m_pFirstFreeBuff = reinterpret_cast<uint8_t*>(
+        (reinterpret_cast<uintptr_t>(m_pFirstFreeBuff) + 3) & ~uintptr_t(3));
+
+    return true;
+}
 } // namespace Dad
 
 //***End of file**************************************************************

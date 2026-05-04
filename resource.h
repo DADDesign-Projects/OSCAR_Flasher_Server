@@ -18,7 +18,7 @@
 #define IDC_FLASH                       1008
 #define IDC_PROGRESS1                   1009
 #define IDC_EDIT1                       1010
-#define IDC_MFCBUTTON1                  1011
+#define IDC_SAVE_FILES                  1011
 
 // Next default values for new objects
 // 

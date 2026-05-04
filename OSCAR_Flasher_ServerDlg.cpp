@@ -80,6 +80,7 @@ BEGIN_MESSAGE_MAP(COSCARFlasherServerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_FLASH, &COSCARFlasherServerDlg::OnBnClickedFlash)
 	ON_BN_CLICKED(IDC_REFRESH, &COSCARFlasherServerDlg::OnBnClickedRefresh)
 	ON_LBN_SELCHANGE(IDC_LIST_COM, &COSCARFlasherServerDlg::OnLbnSelchangeListCom)
+	ON_BN_CLICKED(IDC_SAVE_FILES, &COSCARFlasherServerDlg::OnBnClickedSaveFiles)
 END_MESSAGE_MAP()
 
 
@@ -163,6 +164,28 @@ void COSCARFlasherServerDlg::OnPaint()
 	}
 }
 
+void COSCARFlasherServerDlg::UpdateHorizontalExtent()
+{
+	CClientDC dc(&m_ListeFiles);
+	CFont* pOldFont = dc.SelectObject(m_ListeFiles.GetFont());
+
+	int nMaxWidth = 0;
+	for (int i = 0; i < m_ListeFiles.GetCount(); i++)
+	{
+		CString str;
+		m_ListeFiles.GetText(i, str);
+
+		CSize sz = dc.GetTextExtent(str);
+		if (sz.cx > nMaxWidth)
+			nMaxWidth = sz.cx;
+	}
+
+	dc.SelectObject(pOldFont);
+
+	// Ajouter une marge
+	m_ListeFiles.SetHorizontalExtent(nMaxWidth + 10);
+}
+
 // Le système appelle cette fonction pour obtenir le curseur à afficher lorsque l'utilisateur fait glisser
 //  la fenêtre réduite.
 HCURSOR COSCARFlasherServerDlg::OnQueryDragIcon()
@@ -202,6 +225,7 @@ void COSCARFlasherServerDlg::OnBnClickedAddFile()
 
 			// Ajouter le fichier à la liste
 			m_ListeFiles.InsertString(m_ListeFiles.GetCount(), NomFichier);
+			UpdateHorizontalExtent(); // mettre à jour l'ascenseur
 		}
 	}
 }
@@ -303,7 +327,7 @@ UINT Flash(LPVOID pParam) {
 	pDialog->m_Progress.SetPos(0);
 	for (int16_t IndexBloc = 0; IndexBloc < NbBloc; IndexBloc++) {
 
-		// Synchronisation avec Daisy
+		// Synchronisation avec OSCAR
 		int16_t SynchroResult = Server.Synchronize();
 		if (-1 == SynchroResult) {
 			MessageBox(GetActiveWindow(), L"Synchronization with OSCAR impossible (Maybe Change COM Port?)", L"Transfer error", MB_OK | MB_ICONERROR);
@@ -370,3 +394,105 @@ void COSCARFlasherServerDlg::OnLbnSelchangeListCom()
 	}
 	SetCursor(hMemCurseur);
 }
+
+
+constexpr LPCTSTR __szFileDialogFilter = _T("OSCAR Flasher Server Files (*.ofsf)|*.ofsf|All Files (*.*)|*.*||");
+
+void COSCARFlasherServerDlg::OnBnClickedSaveFiles()
+{
+
+	// Configuration de la boîte de dialogue pour la sélection multiple
+
+	CFileDialog dlg(
+		FALSE,              // FALSE = Save dialog
+		_T("ofsf"),          // Extension par défaut
+		_T("*.ofsf"),        // Nom de fichier initial
+		OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY,  // Options
+		__szFileDialogFilter,
+		this
+	);
+
+	// Titre de la boîte de dialogue
+	dlg.m_ofn.lpstrTitle = _T("Save all files in the list to an OFSF file");
+	CString strFilePath;
+	if (dlg.DoModal() == IDOK)
+	{
+		strFilePath = dlg.GetPathName();
+
+
+		// Forcer l'extension .ofsf si l'utilisateur l'a supprimée
+		if (strFilePath.Right(5).CompareNoCase(_T(".ofsf")) != 0)
+		{
+			strFilePath += _T(".ofsf");
+		}
+		
+	}
+
+	// Mise en mémoire des fichiers
+	int NbFiles = m_ListeFiles.GetCount();
+	if (NbFiles == 0) {
+		MessageBox(L"Please add a file", L"No file selected", MB_OK | MB_ICONWARNING);
+		return;
+	}
+
+	Dad::cServer Server;
+	Server.Init(0, QSPI_SIZE);
+	
+	for (int Index = 0; Index < NbFiles; Index++) {
+		CString NomFichier;
+		CString PathFichier;
+		m_ListeFiles.GetText(Index, PathFichier);
+		NomFichier = PathFindFileName(PathFichier);
+
+		CW2A asciiPathFichier(PathFichier);
+		const char* cPathFichier = asciiPathFichier;
+		CW2A asciiNomFichier(NomFichier);
+		const char* cNomFichier = asciiNomFichier;
+		if (false == Server.addFile(std::string(cPathFichier), std::string(cNomFichier))) {
+			MessageBox(CString(L"Error loading " + NomFichier + L" file"), L"File loading error", MB_OK | MB_ICONERROR);
+			m_Edit.SetWindowText(L"File loading error");
+			return;
+		}
+	}
+
+	// Enregistement du fichier de sauvegarde
+	// Ouvrir le fichier en mode binaire raw
+	CFile file;
+	CFileException ex;
+
+	if (!file.Open(strFilePath, CFile::modeCreate | CFile::modeWrite | CFile::typeBinary, &ex))
+	{
+		// Afficher l'erreur si ouverture échoue
+		TCHAR szError[256];
+		ex.GetErrorMessage(szError, 256);
+		CString strMsg;
+		strMsg.Format(_T("Cannot open file for writing:\n%s"), szError);
+		MessageBox(strMsg, _T("Error"), MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	// Écriture raw du buffer
+	try
+	{
+		// Récupérer le buffer et la taille
+		BYTE* pBuffer = Server.getBuffer();
+		DWORD  dwSize = Server.getDataSize();
+		file.Write(pBuffer, dwSize);
+		file.Close();
+
+		CString strMsg;
+		strMsg.Format(_T("File saved successfully.\n%d bytes written."), dwSize);
+		MessageBox(strMsg, _T("Success"), MB_OK | MB_ICONINFORMATION);
+	}
+	catch (CFileException* e)
+	{
+		TCHAR szError[256];
+		e->GetErrorMessage(szError, 256);
+		CString strMsg;
+		strMsg.Format(_T("Write error:\n%s"), szError);
+		MessageBox(strMsg, _T("Error"), MB_OK | MB_ICONERROR);
+		e->Delete();
+		file.Close();
+	}
+}
+// Fin du fichier OSCAR_Flasher_ServerDlg.cpp

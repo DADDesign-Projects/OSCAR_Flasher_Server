@@ -69,6 +69,8 @@ public:
     uint16_t getNbBlocs()   const {
         return static_cast<uint16_t>(getDataSize() / TRANS_BLOCK_SIZE) + 1;
     }
+	uint8_t* getBuffer() const { return m_pBuff; }
+    void setDataSize(uint32_t size) { m_QSPI_Size = size; }
 
 protected:
     //------------------------------------------------------------------------------
@@ -84,6 +86,7 @@ protected:
                              std::initializer_list<const char*> exts);
     static bool isImageFile(const std::string& fileName);
     static bool isElfFile  (const std::string& fileName);
+    static bool isOFSFFile(const std::string& fileName);
 
     //------------------------------------------------------------------------------
     // Buffer writers
@@ -107,6 +110,7 @@ protected:
     bool addCommonFile (const std::string& filePath, const std::string& fileName);
     bool addImageFile  (const std::string& filePath, const std::string& fileName);
     bool addElfFile    (const std::string& filePath, const std::string& fileName);
+	bool addOFSFFile   (const std::string& filePath, const std::string& fileName);
 
     // Image sub-loaders (called with an already-open GDI+ Image).
     bool addSingleImageFile  (Gdiplus::Image* pImage, const std::string& fileName);
