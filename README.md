@@ -74,12 +74,14 @@ git clone https://github.com/DADDesign-Projects/OSCAR_Flasher_Server
 4. Select the files to upload:
    - ELF effect programs  
    - Images and assets  
-   - Other required files  
+   - Other required files
 5. Click **Flash**  
 6. Wait until the upload process is complete  
+* You can save a complete list of files into a single OFSF file by clicking the Save Files button.
+This file can later be reused by simply adding it to the file list, either alone or together with other files.
 
 > ⚠️ **Warning**  
-> During flashing, the entire flash memory is erased before programming.
+> During flashing process, the entire flash memory is erased before programming.
 
 ---
 ## 🙏 Credits
