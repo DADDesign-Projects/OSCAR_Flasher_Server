@@ -18,7 +18,7 @@ namespace Dad {
 #define TRANS_BLOCK_SIZE    1024                             // Size of a transmission block
 
 #define MAX_ENTRY_NAME      40                              // Number of pages reserved at the beginning of QSPI Flash
-#define DIR_FILE_COUNT      40                              // Number of entries in the Directory
+#define DIR_FILE_COUNT      80                              // Number of entries in the Directory
 
     // Directory structure
     typedef struct stFile {
