@@ -313,7 +313,9 @@ UINT Flash(LPVOID pParam) {
 		CW2A asciiNomFichier(NomFichier);
 		const char* cNomFichier = asciiNomFichier;
 		if (false == Server.addFile(std::string(cPathFichier), std::string(cNomFichier))) {
-			MessageBox(GetActiveWindow(), CString(L"Error loading " + NomFichier + L" file"), L"File loading error", MB_OK | MB_ICONERROR);
+			CString strDetail;
+			strDetail.Format(L"Error loading %s file\n\n%hs", (LPCWSTR)NomFichier, Server.GetLastError().c_str());
+			MessageBox(GetActiveWindow(), strDetail, L"File loading error", MB_OK | MB_ICONERROR);
 			pDialog->m_Edit.SetWindowText(L"File loading error");
 			pDialog->m_ButtonFlash.EnableWindow(TRUE);
 			SetCursor(hMemCurseur);
@@ -415,17 +417,18 @@ void COSCARFlasherServerDlg::OnBnClickedSaveFiles()
 	// Titre de la boîte de dialogue
 	dlg.m_ofn.lpstrTitle = _T("Save all files in the list to an OFSF file");
 	CString strFilePath;
-	if (dlg.DoModal() == IDOK)
+	if (dlg.DoModal() != IDOK)
 	{
-		strFilePath = dlg.GetPathName();
+		// Utilisateur annulé : rien à faire
+		return;
+	}
 
+	strFilePath = dlg.GetPathName();
 
-		// Forcer l'extension .ofsf si l'utilisateur l'a supprimée
-		if (strFilePath.Right(5).CompareNoCase(_T(".ofsf")) != 0)
-		{
-			strFilePath += _T(".ofsf");
-		}
-		
+	// Forcer l'extension .ofsf si l'utilisateur l'a supprimée
+	if (strFilePath.Right(5).CompareNoCase(_T(".ofsf")) != 0)
+	{
+		strFilePath += _T(".ofsf");
 	}
 
 	// Mise en mémoire des fichiers
@@ -449,50 +452,28 @@ void COSCARFlasherServerDlg::OnBnClickedSaveFiles()
 		CW2A asciiNomFichier(NomFichier);
 		const char* cNomFichier = asciiNomFichier;
 		if (false == Server.addFile(std::string(cPathFichier), std::string(cNomFichier))) {
-			MessageBox(CString(L"Error loading " + NomFichier + L" file"), L"File loading error", MB_OK | MB_ICONERROR);
+			CString strDetail;
+			strDetail.Format(L"Error loading %s file\n\n%hs", (LPCWSTR)NomFichier, Server.GetLastError().c_str());
+			MessageBox(strDetail, L"File loading error", MB_OK | MB_ICONERROR);
 			m_Edit.SetWindowText(L"File loading error");
 			return;
 		}
 	}
 
-	// Enregistement du fichier de sauvegarde
-	// Ouvrir le fichier en mode binaire raw
-	CFile file;
-	CFileException ex;
+	// Enregistrement du fichier de sauvegarde (en-tête OFSF versionné + buffer)
+	CW2A asciiFilePath(strFilePath);
+	const char* cFilePath = asciiFilePath;
 
-	if (!file.Open(strFilePath, CFile::modeCreate | CFile::modeWrite | CFile::typeBinary, &ex))
+	if (!Server.SaveToOFSFFile(std::string(cFilePath)))
 	{
-		// Afficher l'erreur si ouverture échoue
-		TCHAR szError[256];
-		ex.GetErrorMessage(szError, 256);
 		CString strMsg;
-		strMsg.Format(_T("Cannot open file for writing:\n%s"), szError);
+		strMsg.Format(_T("Write error:\n%hs"), Server.GetLastError().c_str());
 		MessageBox(strMsg, _T("Error"), MB_OK | MB_ICONERROR);
 		return;
 	}
 
-	// Écriture raw du buffer
-	try
-	{
-		// Récupérer le buffer et la taille
-		BYTE* pBuffer = Server.getBuffer();
-		DWORD  dwSize = Server.getDataSize();
-		file.Write(pBuffer, dwSize);
-		file.Close();
-
-		CString strMsg;
-		strMsg.Format(_T("File saved successfully.\n%d bytes written."), dwSize);
-		MessageBox(strMsg, _T("Success"), MB_OK | MB_ICONINFORMATION);
-	}
-	catch (CFileException* e)
-	{
-		TCHAR szError[256];
-		e->GetErrorMessage(szError, 256);
-		CString strMsg;
-		strMsg.Format(_T("Write error:\n%s"), szError);
-		MessageBox(strMsg, _T("Error"), MB_OK | MB_ICONERROR);
-		e->Delete();
-		file.Close();
-	}
+	CString strMsg;
+	strMsg.Format(_T("File saved successfully.\n%d bytes written."), Server.getDataSize());
+	MessageBox(strMsg, _T("Success"), MB_OK | MB_ICONINFORMATION);
 }
 // Fin du fichier OSCAR_Flasher_ServerDlg.cpp

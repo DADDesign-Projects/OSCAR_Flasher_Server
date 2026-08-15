@@ -8,6 +8,7 @@
 
 #define NOMINMAX
 #include <algorithm>
+#include <cstring>
 #include <windows.h>
 #include <fstream>
 #include <vector>
@@ -523,37 +524,95 @@ bool cServer::addElfFile(const std::string& filePath, const std::string& fileNam
 // OFSF file loader
 //==================================================================================
 bool cServer::addOFSFFile(const std::string& filePath, const std::string& fileName) {
+    m_LastError.clear();
+
     std::ifstream file(filePath, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) return false;
+    if (!file.is_open()) {
+        m_LastError = "OFSF: unable to open '" + fileName + "'";
+        return false;
+    }
 
-    stFile FileDirectory[DIR_FILE_COUNT];
-    uint32_t Offset = static_cast<uint32_t>(m_pFirstFreeBuff - m_pBuff);
-    Offset -=sizeof(FileDirectory);
-
-    auto fileSize = static_cast<uint32_t>(file.tellg());
-    fileSize -= sizeof(FileDirectory);
+    const uint32_t totalFileSize = static_cast<uint32_t>(file.tellg());
     file.seekg(0, std::ios::beg);
 
-    // lecture du repertoire
+    // -- Lecture et validation de l'en-tete -----------------------------------
+    if (totalFileSize < sizeof(stOFSFHeader)) {
+        m_LastError = "OFSF: '" + fileName + "' is too small to contain a valid header "
+                      "(old format or corrupted file - please regenerate it)";
+        return false;
+    }
 
-    if (!file.read(reinterpret_cast<char*>(FileDirectory), sizeof(FileDirectory))) return false;
-	
-    // Copie les entrees du repertoire dans le buffer
-    uint16_t IndexFile = 0;
-    while (FileDirectory[IndexFile].Size != 0) {
-        strncpy_s(m_pFile->Name, FileDirectory[IndexFile].Name, MAX_ENTRY_NAME);
-        m_pFile->Size = FileDirectory[IndexFile].Size;
+    stOFSFHeader Header{};
+    if (!file.read(reinterpret_cast<char*>(&Header), sizeof(Header))) {
+        m_LastError = "OFSF: failed to read header of '" + fileName + "'";
+        return false;
+    }
+
+    if (std::memcmp(Header.Magic, OFSF_MAGIC, OFSF_MAGIC_SIZE) != 0) {
+        m_LastError = "OFSF: '" + fileName + "' has no valid OFSF header "
+                      "(old format generated before header versioning - please regenerate it)";
+        return false;
+    }
+
+    if (Header.Version != OFSF_VERSION) {
+        m_LastError = "OFSF: '" + fileName + "' has unsupported format version "
+                      + std::to_string(Header.Version) + " (expected " + std::to_string(OFSF_VERSION) + ")";
+        return false;
+    }
+
+    // Garde-fou : evite une allocation/lecture absurde sur un fichier corrompu
+    if (Header.DirEntryCount == 0 || Header.DirEntryCount > DIR_FILE_COUNT) {
+        m_LastError = "OFSF: '" + fileName + "' has an invalid directory entry count ("
+                      + std::to_string(Header.DirEntryCount) + ")";
+        return false;
+    }
+
+    const uint32_t dirBytes = Header.DirEntryCount * static_cast<uint32_t>(sizeof(stFile));
+    if (static_cast<uint64_t>(sizeof(stOFSFHeader)) + dirBytes > totalFileSize) {
+        m_LastError = "OFSF: '" + fileName + "' is truncated (directory larger than file)";
+        return false;
+    }
+
+    // -- Lecture du repertoire (taille dynamique, definie par le fichier) ----
+    std::vector<stFile> FileDirectory(Header.DirEntryCount);
+    if (!file.read(reinterpret_cast<char*>(FileDirectory.data()), dirBytes)) {
+        m_LastError = "OFSF: failed to read directory of '" + fileName + "'";
+        return false;
+    }
+
+    const uint32_t fileSize = totalFileSize - static_cast<uint32_t>(sizeof(stOFSFHeader)) - dirBytes;
+
+    // Decalage a appliquer aux DataAddress du repertoire source pour les
+    // rebaser a leur nouvelle position dans le buffer hote.
+    const uint32_t Offset = static_cast<uint32_t>(m_pFirstFreeBuff - m_pBuff) - dirBytes;
+
+    // -- Copie des entrees du repertoire dans le buffer hote ------------------
+    for (uint32_t IndexFile = 0; IndexFile < Header.DirEntryCount; ++IndexFile) {
+        if (FileDirectory[IndexFile].Size == 0) break;
+
+        if (m_IndexFile >= DIR_FILE_COUNT) {
+            m_LastError = "OFSF: host directory full while merging '" + fileName + "'";
+            return false;
+        }
+
+        strncpy_s(m_pFile->Name, FileDirectory[IndexFile].Name, MAX_ENTRY_NAME - 1);
+        m_pFile->Name[MAX_ENTRY_NAME - 1] = '\0';
+        m_pFile->Size        = FileDirectory[IndexFile].Size;
         m_pFile->DataAddress = FileDirectory[IndexFile].DataAddress + Offset;
-        m_pFile->FileType = FileDirectory[IndexFile].FileType;
+        m_pFile->FileType    = FileDirectory[IndexFile].FileType;
         ++m_pFile;
         ++m_IndexFile;
+    }
 
-        IndexFile++;
-        if (IndexFile >= DIR_FILE_COUNT) return false;
-	}
-
-    if ((m_pFirstFreeBuff + fileSize) > m_pEndBuff) return false;
-    if (!file.read(reinterpret_cast<char*>(m_pFirstFreeBuff), fileSize)) return false;
+    // -- Copie des donnees -----------------------------------------------------
+    if ((m_pFirstFreeBuff + fileSize) > m_pEndBuff) {
+        m_LastError = "OFSF: not enough space in QSPI buffer to load '" + fileName + "'";
+        return false;
+    }
+    if (!file.read(reinterpret_cast<char*>(m_pFirstFreeBuff), fileSize)) {
+        m_LastError = "OFSF: failed to read payload of '" + fileName + "'";
+        return false;
+    }
 
     m_pFirstFreeBuff += fileSize;
 
@@ -563,6 +622,43 @@ bool cServer::addOFSFFile(const std::string& filePath, const std::string& fileNa
 
     return true;
 }
+
+//==================================================================================
+// OFSF file writer
+//==================================================================================
+
+// Save the current buffer to disk as a versioned .ofsf file:
+//   [stOFSFHeader] [Directory: DIR_FILE_COUNT x stFile] [Data...]
+bool cServer::SaveToOFSFFile(const std::string& filePath)
+{
+    m_LastError.clear();
+
+    if (m_pBuff == nullptr) {
+        m_LastError = "OFSF: server buffer not initialised (call Init() first)";
+        return false;
+    }
+
+    std::ofstream file(filePath, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        m_LastError = "OFSF: unable to open '" + filePath + "' for writing";
+        return false;
+    }
+
+    stOFSFHeader Header{};
+    std::memcpy(Header.Magic, OFSF_MAGIC, OFSF_MAGIC_SIZE);
+    Header.Version       = OFSF_VERSION;
+    Header.DirEntryCount = DIR_FILE_COUNT;
+
+    file.write(reinterpret_cast<const char*>(&Header), sizeof(Header));
+    file.write(reinterpret_cast<const char*>(m_pBuff), getDataSize());
+
+    if (!file.good()) {
+        m_LastError = "OFSF: write error while saving '" + filePath + "'";
+        return false;
+    }
+    return true;
+}
+
 } // namespace Dad
 
 //***End of file**************************************************************

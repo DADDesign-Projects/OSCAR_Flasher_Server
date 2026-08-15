@@ -57,4 +57,26 @@ namespace Dad {
         FILE_TYPE_ELF = 0x2853
 	};
 
+    //--------------------------------------------------------------------
+    // Format de fichier .ofsf (OSCAR Flasher Server File)
+    //
+    // Un fichier .ofsf enregistré sur disque a la structure suivante :
+    //   [stOFSFHeader]  [Directory : DirEntryCount x stFile]  [Data...]
+    //
+    // L'en-tête rend le format auto-descriptif : le nombre d'entrées du
+    // répertoire est lu depuis le fichier lui-même, il ne dépend donc plus
+    // de la valeur de DIR_FILE_COUNT au moment de la compilation qui lit
+    // le fichier. Cela évite toute corruption silencieuse si DIR_FILE_COUNT
+    // change entre la génération d'un .ofsf et sa relecture.
+    //--------------------------------------------------------------------
+    #define OFSF_MAGIC        "OFSF"
+    #define OFSF_MAGIC_SIZE   4
+    #define OFSF_VERSION      1u
+
+    struct stOFSFHeader {
+        char     Magic[OFSF_MAGIC_SIZE];   // "OFSF"
+        uint32_t Version;                  // Version du format (OFSF_VERSION)
+        uint32_t DirEntryCount;            // Nombre d'entrées stFile qui suivent l'en-tête
+    };
+
 } //Dad

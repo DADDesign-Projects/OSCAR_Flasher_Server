@@ -58,6 +58,19 @@ public:
     // Auto-detect the file type (image / ELF / binary) and add it to the buffer.
     bool addFile(const std::string& filePath, const std::string& fileName);
 
+    // Save the current buffer (Directory + Data) to a versioned .ofsf file,
+    // prefixed with an stOFSFHeader so it can always be safely reloaded via
+    // addFile()/addOFSFFile(), regardless of future DIR_FILE_COUNT changes.
+    bool SaveToOFSFFile(const std::string& filePath);
+
+    //------------------------------------------------------------------------------
+    // Error reporting
+    //------------------------------------------------------------------------------
+
+    // Human-readable description of the last error (set by addOFSFFile /
+    // SaveToOFSFFile). Empty string if the last operation succeeded.
+    const std::string& GetLastError() const { return m_LastError; }
+
     //------------------------------------------------------------------------------
     // Buffer queries
     //------------------------------------------------------------------------------
@@ -131,6 +144,8 @@ protected:
 
     stFile*   m_pFile           = nullptr;  // Current directory entry
     uint8_t   m_IndexFile       = 0;        // Number of files added so far
+
+    std::string m_LastError;                // Last error message (addOFSFFile / SaveToOFSFFile)
 
     // COM port
     HANDLE    m_hCom   = INVALID_HANDLE_VALUE;
